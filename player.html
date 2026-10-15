@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<title>YT bridge</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #000; overflow: hidden; }
+  #p { width: 100%; height: 100vh; }
+</style>
+</head>
+<body>
+<div id="p"></div>
+<script src="https://www.youtube.com/iframe_api"></script>
+<script>
+/* Most miedzy loading screenem (nui://) a odtwarzaczem YouTube.
+ * Ta strona musi byc hostowana pod zwyklym https:// (np. GitHub Pages),
+ * dzieki czemu YouTube dostaje poprawny Referer i nie zwraca bledu 153. */
+var player = null, ready = false;
+
+function post(m) { m.src = 'ls-bridge'; parent.postMessage(m, '*'); }
+
+function info() {
+  var vd = {}, pl = [], pi = 0;
+  try { vd = player.getVideoData() || {}; } catch (e) {}
+  try { pl = player.getPlaylist() || []; pi = player.getPlaylistIndex(); } catch (e) {}
+  return { vd: { title: vd.title, author: vd.author, video_id: vd.video_id }, pl: pl, pi: pi };
+}
+
+function onYouTubeIframeAPIReady() {
+  player = new YT.Player('p', {
+    width: '100%', height: '100%',
+    playerVars: { autoplay: 0, controls: 0, disablekb: 1, fs: 0, rel: 0,
+                  iv_load_policy: 3, modestbranding: 1, playsinline: 1 },
+    events: {
+      onReady: function () { ready = true; post({ type: 'ready' }); },
+      onStateChange: function (e) {
+        var i = info();
+        post({ type: 'state', state: e.data, vd: i.vd, pl: i.pl, pi: i.pi });
+      },
+      onError: function (e) { post({ type: 'error', code: e.data }); }
+    }
+  });
+}
+
+window.addEventListener('message', function (ev) {
+  if (ev.source !== parent) return;
+  var m = ev.data;
+  if (!m || m.target !== 'ls-bridge' || !ready) return;
+  try {
+    switch (m.cmd) {
+      case 'loadVideo':    m.autoplay ? player.loadVideoById(m.id) : player.cueVideoById(m.id); break;
+      case 'loadPlaylist': var spec = { list: m.list, listType: 'playlist', index: 0 };
+                           m.autoplay ? player.loadPlaylist(spec) : player.cuePlaylist(spec); break;
+      case 'shuffle':      player.setShuffle(!!m.value); break;
+      case 'play':         player.playVideo(); break;
+      case 'pause':        player.pauseVideo(); break;
+      case 'next':         player.nextVideo(); break;
+      case 'prev':         player.previousVideo(); break;
+      case 'volume':       player.setVolume(m.value); break;
+      case 'mute':         m.value ? player.mute() : player.unMute(); break;
+    }
+  } catch (e) {}
+});
+</script>
+</body>
+</html>
